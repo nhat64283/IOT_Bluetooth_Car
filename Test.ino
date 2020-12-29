@@ -1,207 +1,195 @@
 #include <SoftwareSerial.h>
-#include <string.h>
 
-#define MAX_STRING 256
+// set using pin
 #define TX_PIN  2
 #define RX_PIN  3
- 
+#define MOTOR12PIN1 4
+#define MOTOR12PIN2 5
+#define MOTOR12ENABLEPIN 6
+#define MOTOR3PIN1 11
+#define MOTOR3PIN2 12
+// set all state's value
+#define NONE 0
+#define FORWARD_HOLD 1
+#define BACK_HOLD 2
+#define LEFT_HOLD 3
+#define RIGHT_HOLD 4
+#define STOP_HOLD 5
+#define FORWARD_RELEASE 6
+#define BACK_RELEASE 7
+#define LEFT_RELEASE 8
+#define RIGHT_RELEASE 9
+#define STOP_RELEASE 10
+
 SoftwareSerial bluetooth(RX_PIN, TX_PIN);
 
-int motor1Pin1 = 4;
-int motor1Pin2 = 5;
-int motor1EnablePin = 6;
-int motor2Pin1 = 8;
-int motor2Pin2 = 9;
-int motor2EnablePin = 10;
-int motor3Pin1 = 11;
-int motor3Pin2 = 12;
 int Speed = 100;
-int flag = 0;
-
-char recv[MAX_STRING];
-char state[MAX_STRING];
-char tmp[MAX_STRING];
+int state, state_forward_back, state_left_right, state_stop,
+    value1pin1, value1pin2, value2pin1, value2pin2;
 
 void setup() {
   Serial.begin(9600);
   bluetooth.begin(9600);
-  pinMode(motor1Pin1, OUTPUT);
-  pinMode(motor1Pin2, OUTPUT);
-  pinMode(motor1EnablePin, OUTPUT);
-  pinMode(motor2Pin1, OUTPUT);
-  pinMode(motor2Pin2, OUTPUT);
-  pinMode(motor2EnablePin, OUTPUT);
-  pinMode(motor3Pin2, OUTPUT);
-  pinMode(motor3Pin2, OUTPUT);
+
+  //initialize motor's value
+  set_low_low(&value1pin1, &value1pin2);
+  set_low_low(&value2pin1, &value2pin2);
+
+  //initialize all state
+  state = NONE;
+  state_stop = NONE;
+  state_forward_back = NONE;
+  state_left_right = NONE;
+
+  //set pin's mode = output
+  pinMode(MOTOR12PIN1, OUTPUT);
+  pinMode(MOTOR12PIN2, OUTPUT);
+  pinMode(MOTOR12ENABLEPIN, OUTPUT);
+  pinMode(MOTOR3PIN2, OUTPUT);
+  pinMode(MOTOR3PIN2, OUTPUT);
 }
 
 void loop() {
-  strcpy(state, "\0");
-  strcpy(recv, "\0");
-  if (bluetooth.available() > 0) {
-    strcpy(recv, bluetooth.read());
-    if (strlen(recv) > 1) {
-      Speed = atoi(recv);
-    } else {
-      strcpy(state, recv);
+  state = NONE;
+  if (bluetooth.available() > 0) state = bluetooth.read();
+
+  // if there are some chage
+  if (state != NONE) {
+    switch (state) {
+      case FORWARD_HOLD:
+        // if back button is holding then stop forward and back
+        if (state_forward_back == BACK_HOLD) {
+          // save the state that both forward and back is holding
+          state_forward_back = FORWARD_HOLD + BACK_HOLD;
+          // if stop button is holding then keep stop
+          if (state_stop == STOP_HOLD) break;
+          set_low_low(&value1pin1, &value1pin2);
+        } else {
+          state_forward_back = FORWARD_HOLD;
+          if (state_stop == STOP_HOLD) break;
+          set_high_low(&value1pin1, &value1pin2);
+        }
+        break;
+      case BACK_HOLD:
+        if (state_forward_back == FORWARD_HOLD) {
+          state_forward_back = FORWARD_HOLD + BACK_HOLD;
+          if (state_stop == STOP_HOLD) break;
+          set_low_low(&value1pin1, &value1pin2);
+        } else {
+          state_forward_back = BACK_HOLD;
+          if (state_stop == STOP_HOLD) break;
+          set_high_low(&value1pin2, &value1pin1);
+        }
+        break;
+      case LEFT_HOLD:
+        if (state_left_right == RIGHT_HOLD) {
+          state_left_right = LEFT_HOLD + RIGHT_HOLD;
+          if (state_stop == STOP_HOLD) break;
+          set_low_low(&value2pin1, &value2pin2);
+        } else {
+          state_left_right = LEFT_HOLD;
+          if (state_stop == STOP_HOLD) break;
+          set_high_low(&value2pin1, &value2pin2);
+        }
+        break;
+      case RIGHT_HOLD:
+        if (state_left_right == LEFT_HOLD) {
+          state_left_right = LEFT_HOLD + RIGHT_HOLD;
+          if (state_stop == STOP_HOLD) break;
+          set_low_low(&value2pin1, &value2pin2);
+        } else {
+          state_left_right = RIGHT_HOLD;
+          if (state_stop == STOP_HOLD) break;
+          set_high_low(&value2pin2, &value2pin1);
+        }
+        break;
+      case STOP_HOLD:
+        // set all motor stop
+        set_low_low(&value1pin1, &value1pin2);
+        set_low_low(&value2pin1, &value2pin2);
+        state_stop = STOP_HOLD;
+        break;
+      case FORWARD_RELEASE:
+        // if previous forward button is holding then stop forward
+        if (state_forward_back == FORWARD_HOLD) {
+          state_forward_back = NONE;
+          if (state_stop == STOP_HOLD) break;
+          set_low_low(&value1pin1, &value1pin2);
+        }
+        // if both forward and back is holding then motor go back
+        else if (state_forward_back == FORWARD_HOLD + BACK_HOLD) {
+          state_left_right = BACK_HOLD;
+          if (state_stop == STOP_HOLD) break;
+          set_high_low(&value1pin2, &value1pin1);
+        }
+        break;
+      case BACK_RELEASE:
+        if (state_forward_back == BACK_HOLD) {
+          state_forward_back = NONE;
+          if (state_stop == STOP_HOLD) break;
+          set_low_low(&value1pin1, &value1pin2);
+        } else if (state_forward_back == FORWARD_HOLD + BACK_HOLD) {
+          state_left_right = FORWARD_HOLD;
+          if (state_stop == STOP_HOLD) break;
+          set_high_low(&value1pin1, &value1pin2);
+        }
+        break;
+      case LEFT_RELEASE:
+        if (state_left_right == LEFT_HOLD) {
+          state_left_right = NONE;
+          if (state_stop == STOP_HOLD) break;
+          set_low_low(&value2pin1, &value2pin2);
+        } else if (state_left_right == LEFT_HOLD + RIGHT_HOLD) {
+          state_left_right = RIGHT_HOLD;
+          if (state_stop == STOP_HOLD) break;
+          set_high_low(&value2pin2, &value2pin1);
+        }
+        break;
+      case RIGHT_RELEASE:
+        if (state_left_right == RIGHT_HOLD) {
+          state_left_right = NONE;
+          if (state_stop == STOP_HOLD) break;
+          set_low_low(&value2pin1, &value2pin2);
+        } else if (state_left_right == LEFT_HOLD + RIGHT_HOLD) {
+          state_left_right = LEFT_HOLD;
+          if (state_stop == STOP_HOLD) break;
+          set_high_low(&value2pin1, &value2pin2);
+        }
+        break;
+      case STOP_RELEASE:
+        if (state_forward_back == FORWARD_HOLD) {
+          set_high_low(&value1pin1, &value1pin2);
+        }
+        if (state_forward_back == BACK_HOLD) {
+          set_high_low(&value1pin2, &value1pin1);
+        }
+        if (state_left_right == LEFT_HOLD) {
+          set_high_low(&value2pin1, &value2pin2);
+        }
+        if (state_left_right == RIGHT_HOLD) {
+          set_high_low(&value2pin2, &value2pin1);
+        }
+        state_stop = STOP_RELEASE;
+        break;
+      default:
+        Speed = state;
+        break;
     }
-    if (strcmp(tmp, recv) != 0) {
-      flag = 0;
-    }
-    strcpy(tmp, recv);
+    Serial.println(state);
   }
-  // a ~ FORWARD
-  if (strcmp(state, "a") == 0) {
-    forword();
-    if (flag == 0) {
-      Serial.println("Go Forward!");
-      flag = 1;
-    }
-  }
-  // c ~ TURN LEFT
-  else if (strcmp(state, "c") == 0) {
-    left();
-    if (flag == 0) {
-      Serial.println("Turn LEFT");
-      flag = 1;
-    }
-  }
-  // d ~ TURN RIGHT
-  else if (strcmp(state, "d") == 0) {
-    right();
-    if (flag == 0) {
-      Serial.println("Turn RIGHT");
-      flag = 1;
-    }
-  }
-  // b ~ BACK
-  else if (strcmp(state, "b") == 0) {
-    backword();
-    if (flag == 0) {
-      Serial.println("Reverse!");
-      flag = 1;
-    }
-  }
-  // e ~ stop_car
-  else if (strcmp(state, "e") == 0) {
-    stop_car();
-    if (flag == 0) {
-      Serial.println("Stop!");
-      flag = 1;
-    }
-  }
-  // ac ~ forward + left
-  else if (strcmp(state, "ac") == 0) {
-    forward_left();
-    if (flag == 0) {
-      Serial.println("Forward + Left!");
-      flag = 1;
-    }
-  }
-  // ad ~ forward + right
-  else if (strcmp(state, "ad") == 0) {
-    forward_right();
-    if (flag == 0) {
-      Serial.println("Forward + Left!");
-      flag = 1;
-    }
-  }
-  // bc ~ back + left
-  else if (strcmp(state, "bc") == 0) {
-    back_left();
-    if (flag == 0) {
-      Serial.println("Forward + Left!");
-      flag = 1;
-    }
-  }
-  // bd ~ back + right
-  else if (strcmp(state, "bd") == 0) {
-    back_right();
-    if (flag == 0) {
-      Serial.println("Forward + Left!");
-      flag = 1;
-    }
-  }
-  Serial.println(state);
+  digitalWrite(MOTOR12PIN1, value1pin1);
+  digitalWrite(MOTOR12PIN2, value1pin2);
+  digitalWrite(MOTOR3PIN1, value2pin1);
+  digitalWrite(MOTOR3PIN2, value2pin2);
+  analogWrite(MOTOR12ENABLEPIN, Speed);
 }
 
-void forword() {
-  digitalWrite(motor1Pin1, HIGH);
-  digitalWrite(motor1Pin2, LOW);
-  digitalWrite(motor2Pin1, LOW);
-  digitalWrite(motor2Pin2, HIGH);
-  analogWrite(motor1EnablePin, Speed);
-  analogWrite(motor2EnablePin, Speed);
+void set_high_low(int *pin1, int *pin2) {
+  *pin1 = HIGH;
+  *pin2 = LOW;
 }
 
-void backword() {
-  digitalWrite(motor1Pin1, LOW);
-  digitalWrite(motor1Pin2, HIGH);
-  digitalWrite(motor2Pin1, HIGH);
-  digitalWrite(motor2Pin2, LOW);
-  analogWrite(motor1EnablePin, Speed);
-  analogWrite(motor2EnablePin, Speed);
-}
-
-void left() {
-  digitalWrite(motor3Pin1, HIGH);
-  digitalWrite(motor3Pin2, LOW);
-}
-
-void right() {
-  digitalWrite(motor3Pin1, LOW);
-  digitalWrite(motor3Pin2, HIGH);
-}
-
-void forward_left() {
-  digitalWrite(motor3Pin1, HIGH);
-  digitalWrite(motor3Pin2, LOW);
-  digitalWrite(motor1Pin1, HIGH);
-  digitalWrite(motor1Pin2, LOW);
-  digitalWrite(motor2Pin1, LOW);
-  digitalWrite(motor2Pin2, HIGH);
-  analogWrite(motor1EnablePin, Speed);
-  analogWrite(motor2EnablePin, Speed);
-}
-
-void forward_right() {
-  digitalWrite(motor3Pin1, LOW);
-  digitalWrite(motor3Pin2, HIGH);
-  digitalWrite(motor1Pin1, HIGH);
-  digitalWrite(motor1Pin2, LOW);
-  digitalWrite(motor2Pin1, LOW);
-  digitalWrite(motor2Pin2, HIGH);
-  analogWrite(motor1EnablePin, Speed);
-  analogWrite(motor2EnablePin, Speed);
-}
-
-void back_left() {
-  digitalWrite(motor3Pin1, HIGH);
-  digitalWrite(motor3Pin2, LOW);
-  digitalWrite(motor1Pin1, LOW);
-  digitalWrite(motor1Pin2, HIGH);
-  digitalWrite(motor2Pin1, HIGH);
-  digitalWrite(motor2Pin2, LOW);
-  analogWrite(motor1EnablePin, Speed);
-  analogWrite(motor2EnablePin, Speed);
-}
-
-void back_right() {
-  digitalWrite(motor3Pin1, LOW);
-  digitalWrite(motor3Pin2, HIGH);
-  digitalWrite(motor1Pin1, LOW);
-  digitalWrite(motor1Pin2, HIGH);
-  digitalWrite(motor2Pin1, HIGH);
-  digitalWrite(motor2Pin2, LOW);
-  analogWrite(motor1EnablePin, Speed);
-  analogWrite(motor2EnablePin, Speed);
-}
-
-void stop_car() {
-  digitalWrite(motor1Pin1, LOW);
-  digitalWrite(motor1Pin2, LOW);
-  digitalWrite(motor2Pin1, LOW);
-  digitalWrite(motor2Pin2, LOW);
-  analogWrite(motor1EnablePin, Speed);
-  analogWrite(motor2EnablePin, Speed);
+void set_low_low(int *pin1, int *pin2) {
+  *pin1 = LOW;
+  *pin2 = LOW;
 }
